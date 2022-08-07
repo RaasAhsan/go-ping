@@ -34,6 +34,15 @@ func CalculateChecksum(data []byte) uint16 {
 	return ^checksum
 }
 
+func ValidateChecksum(msg ICMP) bool {
+	origChecksum := msg.Checksum
+	msg.Checksum = 0
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.BigEndian, msg)
+	checksum := CalculateChecksum(buf.Bytes())
+	return origChecksum == checksum
+}
+
 func main() {
 	remoteAddr, _ := net.ResolveIPAddr("ip4", "142.251.116.138")
 
@@ -67,17 +76,13 @@ func Ping(conn *net.IPConn, seq uint16) {
 	buf.Reset()
 	binary.Write(&buf, binary.BigEndian, msg)
 
-	fmt.Println(buf)
-
 	_, err := conn.Write(buf.Bytes())
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
 
-	// fmt.Println(n)
-
-	rbuf := make([]byte, 100)
+	rbuf := make([]byte, 1024)
 	conn.SetReadDeadline(time.Now().Add(time.Duration(3) * time.Second))
 	read, _, err := conn.ReadFromIP(rbuf)
 	if err != nil {
@@ -85,14 +90,13 @@ func Ping(conn *net.IPConn, seq uint16) {
 		return
 	}
 
-	// fmt.Println(read)
-	// fmt.Println(rbuf)
-
 	var reply ICMP
 	binary.Read(bytes.NewReader(rbuf[:read]), binary.BigEndian, &reply)
 
-	// TODO: Validate checksum
+	if !ValidateChecksum(reply) {
+		fmt.Println("Checksum did not match")
+	}
 
 	// fmt.Println(reply)
-	fmt.Println(reply.SequenceNum)
+	fmt.Printf("%s seq=%d\n", conn.RemoteAddr().String(), reply.SequenceNum)
 }
